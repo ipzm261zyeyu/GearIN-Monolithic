@@ -83,7 +83,7 @@ const AdminOrders = () => {
                       <td>{o?.buyer?.name}</td>
                       <td>{moment(o?.createAt).fromNow()}</td>
                       <td>{o?.payment.success ? "Success" : "Failed"}</td>
-                      <td>{o?.products?.length}</td>
+                      <td>{o?.products?.reduce((sum, p) => sum + p.quantity, 0)}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -101,7 +101,7 @@ const AdminOrders = () => {
                       </div>
                       <div className="col-md-8">
                         <p>{p.name}</p>
-                        <p>{p.description.substring(0, 30)}</p>
+                        <p>Quantity : {p.quantity}</p>
                         <p>Price : {p.price}</p>
                       </div>
                     </div>

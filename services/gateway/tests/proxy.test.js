@@ -23,6 +23,7 @@ const useMonolith = (url) => {
   process.env.USERS_URL = url;
   process.env.CATALOG_URL = url;
   process.env.PAYMENTS_URL = url;
+  process.env.ORDERS_URL = url;
   process.env.JWT_SECRET = SECRET;
   Config.reset();
 };

@@ -1,0 +1,39 @@
+{
+  "name": "gearin-payments",
+  "version": "1.0.0",
+  "description": "Payments service for GearIN",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --coverage"
+  },
+  "license": "MIT",
+  "jest": {
+    "testEnvironment": "node",
+    "transform": {},
+    "testTimeout": 60000,
+    "silent": true,
+    "testMatch": [
+      "**/tests/**/*.test.js"
+    ],
+    "collectCoverageFrom": [
+      "src/**/*.js",
+      "!src/server.js"
+    ],
+    "coverageReporters": [
+      "text",
+      "text-summary"
+    ]
+  },
+  "dependencies": {
+    "braintree": "^3.15.0",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.10",
+    "express": "^4.22.3"
+  },
+  "devDependencies": {
+    "jest": "^30.5.2",
+    "supertest": "^7.3.2"
+  }
+}

@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "@jest/globals";
 import mongoose from "mongoose";
-import { failing, startApp, tokenFor } from "./helpers/harness.js";
+import { VIA_GATEWAY, failing, startApp, tokenFor } from "./helpers/harness.js";
 
 let ctx;
 
@@ -9,6 +9,24 @@ const seedOrder = async (buyer, overrides = {}) => {
   const product = await ctx.createProduct(category, {
     photo: { data: Buffer.from("image"), contentType: "image/png" },
   });
+  // У services/orders замовлення зберігає знімок позицій і рядковий id покупця
+  if (VIA_GATEWAY) {
+    return ctx.orderModel.create({
+      items: [
+        {
+          productId: String(product._id),
+          name: product.name,
+          price: product.price,
+          quantity: 1,
+        },
+      ],
+      amount: product.price,
+      transactionId: "tx-seed",
+      payment: { success: true },
+      buyer: String(buyer._id),
+      ...overrides,
+    });
+  }
   return ctx.orderModel.create({
     products: [product._id],
     payment: { success: true },

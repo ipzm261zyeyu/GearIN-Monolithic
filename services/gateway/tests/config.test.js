@@ -9,6 +9,7 @@ beforeEach(() => {
   process.env.USERS_URL = "http://users:4001";
   process.env.CATALOG_URL = "http://catalog:4002";
   process.env.PAYMENTS_URL = "http://payments:4003";
+  process.env.ORDERS_URL = "http://orders:4004";
   process.env.JWT_SECRET = "secret";
   Config.reset();
 });
@@ -26,6 +27,12 @@ describe("Config", () => {
     expect(config.monolithUrl).toBe("http://backend:4000");
     expect(config.usersUrl).toBe("http://users:4001");
     expect(config.jwtSecret).toBe("secret");
+  });
+
+  it("requires ORDERS_URL", () => {
+    delete process.env.ORDERS_URL;
+
+    expect(() => Config.getInstance()).toThrow("ORDERS_URL is required");
   });
 
   it("requires PAYMENTS_URL", () => {

@@ -1,4 +1,4 @@
-import { expect, jest } from "@jest/globals";
+import { describe, expect, it, jest } from "@jest/globals";
 import bcrypt from "bcrypt";
 import express from "express";
 import JWT from "jsonwebtoken";
@@ -16,8 +16,14 @@ export const gateway = {
 };
 export const BraintreeGateway = jest.fn(() => gateway);
 
+export const VIA_GATEWAY = Boolean(process.env.TEST_VIA_GATEWAY);
+export const itDirect = VIA_GATEWAY ? it.skip : it;
+export const itGateway = VIA_GATEWAY ? it : it.skip;
+export const describeDirect = VIA_GATEWAY ? describe.skip : describe;
+export const describeGateway = VIA_GATEWAY ? describe : describe.skip;
+
 export const tokenFor = (user) =>
-  JWT.sign({ _id: user._id }, JWT_SECRET, { expiresIn: "7d" });
+  JWT.sign({ _id: user._id, role: user.role }, JWT_SECRET, { expiresIn: "7d" });
 
 export const failing = (model, method) =>
   jest.spyOn(model, method).mockImplementation(() => {
@@ -43,7 +49,113 @@ export const waitFor = async (probe) => {
   throw new Error("Condition was not met in time");
 };
 
-export const mountController = (controller) => {
+const openServers = [];
+
+const listen = (app) =>
+  new Promise((resolve) => {
+    const server = app.listen(0, () => {
+      openServers.push(server);
+      resolve(server);
+    });
+  });
+
+const expose = async (app) => {
+  const monolith = await listen(app);
+  if (!VIA_GATEWAY) {
+    return request(monolith);
+  }
+  process.env.PORT = "8080";
+  process.env.MONOLITH_URL = `http://127.0.0.1:${monolith.address().port}`;
+  const { Config } = await import("../../../services/gateway/src/config.js");
+  const { createApp } = await import("../../../services/gateway/src/app.js");
+  Config.reset();
+  return request(await listen(createApp()));
+};
+
+const startUsersService = async (mongoUri, dbName) => {
+  Object.assign(process.env, {
+    PORT: "4001",
+    MONGO_URL: mongoUri,
+    MONGO_DB_NAME: dbName,
+  });
+  const { Database } = await import("../../../services/users/src/database.js");
+  const { createApp } = await import("../../../services/users/src/app.js");
+  const { default: userModel } = await import(
+    "../../../services/users/src/models/userModel.js"
+  );
+  await Database.getInstance().connect();
+  const server = await listen(createApp());
+  process.env.USERS_URL = `http://127.0.0.1:${server.address().port}`;
+  return { userModel, disconnect: () => Database.getInstance().disconnect() };
+};
+
+const startCatalogService = async (mongoUri, dbName) => {
+  Object.assign(process.env, {
+    PORT: "4002",
+    MONGO_URL: mongoUri,
+    MONGO_DB_NAME: dbName,
+  });
+  const { Database } = await import("../../../services/catalog/src/database.js");
+  const { createApp } = await import("../../../services/catalog/src/app.js");
+  const { MongoStorageFactory } = await import(
+    "../../../services/catalog/src/storage/MongoStorageFactory.js"
+  );
+  const { default: productModel } = await import(
+    "../../../services/catalog/src/models/productModel.js"
+  );
+  const { default: categoryModel } = await import(
+    "../../../services/catalog/src/models/categoryModel.js"
+  );
+  await Database.getInstance().connect();
+  const server = await listen(createApp(new MongoStorageFactory()));
+  process.env.CATALOG_URL = `http://127.0.0.1:${server.address().port}`;
+  return {
+    productModel,
+    categoryModel,
+    disconnect: () => Database.getInstance().disconnect(),
+  };
+};
+
+const startPaymentsService = async () => {
+  const { createApp } = await import("../../../services/payments/src/app.js");
+  const { BraintreeProvider } = await import(
+    "../../../services/payments/src/providers/BraintreeProvider.js"
+  );
+  class SharedGatewayClient {
+    constructor() {
+      return gateway;
+    }
+  }
+  const provider = new BraintreeProvider(
+    { merchantId: "merchant-id", publicKey: "public-key", privateKey: "private-key" },
+    { BraintreeGateway: SharedGatewayClient, Environment: { Sandbox: "sandbox" } }
+  );
+  const server = await listen(createApp(provider));
+  process.env.PAYMENTS_URL = `http://127.0.0.1:${server.address().port}`;
+};
+
+const startOrdersService = async (mongoUri, dbName) => {
+  Object.assign(process.env, {
+    PORT: "4004",
+    MONGO_URL: mongoUri,
+    MONGO_DB_NAME: dbName,
+  });
+  const { Config } = await import("../../../services/orders/src/config.js");
+  const { Database } = await import("../../../services/orders/src/database.js");
+  const { createApp } = await import("../../../services/orders/src/app.js");
+  const { createClients } = await import(
+    "../../../services/orders/src/clients/index.js"
+  );
+  const { default: orderModel } = await import(
+    "../../../services/orders/src/models/orderModel.js"
+  );
+  await Database.getInstance().connect();
+  const server = await listen(createApp(createClients(Config.getInstance())));
+  process.env.ORDERS_URL = `http://127.0.0.1:${server.address().port}`;
+  return { orderModel, disconnect: () => Database.getInstance().disconnect() };
+};
+
+export const mountController = async (controller) => {
   const app = express();
   app.use(express.json());
   let finish;
@@ -53,7 +165,7 @@ export const mountController = (controller) => {
   app.post("/", (req, res) => {
     controller(req, res).then(() => finish(null), finish);
   });
-  return { api: request(app), settled };
+  return { api: await expose(app), settled };
 };
 
 export const startApp = async () => {
@@ -74,17 +186,34 @@ export const startApp = async () => {
   const mongo = await MongoMemoryServer.create();
   await mongoose.connect(mongo.getUri("gearin-test"));
 
+  const usersService = VIA_GATEWAY
+    ? await startUsersService(mongo.getUri(), "gearin-test")
+    : null;
+  const catalogService = VIA_GATEWAY
+    ? await startCatalogService(mongo.getUri(), "gearin-test")
+    : null;
+  if (VIA_GATEWAY) {
+    await startPaymentsService();
+  }
+  const ordersService = VIA_GATEWAY
+    ? await startOrdersService(mongo.getUri(), "gearin-test")
+    : null;
+
   const { default: app } = await import("../../app.js");
-  const { default: userModel } = await import("../../models/userModel.js");
-  const { default: categoryModel } = await import(
+  const { default: monolithUserModel } = await import("../../models/userModel.js");
+  const userModel = usersService?.userModel ?? monolithUserModel;
+  const { default: monolithCategoryModel } = await import(
     "../../models/categoryModel.js"
   );
-  const { default: productModel } = await import(
+  const { default: monolithProductModel } = await import(
     "../../models/productModel.js"
   );
-  const { default: orderModel } = await import("../../models/orderModel.js");
+  const categoryModel = catalogService?.categoryModel ?? monolithCategoryModel;
+  const productModel = catalogService?.productModel ?? monolithProductModel;
+  const { default: monolithOrderModel } = await import("../../models/orderModel.js");
+  const orderModel = ordersService?.orderModel ?? monolithOrderModel;
 
-  const server = app.listen(0);
+  const api = await expose(app);
   let sequence = 0;
 
   const createUser = async (overrides = {}) => {
@@ -95,7 +224,7 @@ export const startApp = async () => {
       password: await bcrypt.hash(PASSWORD, 4),
       phone: "0501234567",
       address: "Kyiv",
-      answer: "blue",
+      answer: VIA_GATEWAY ? await bcrypt.hash("blue", 4) : "blue",
       ...overrides,
     });
   };
@@ -138,14 +267,21 @@ export const startApp = async () => {
   };
 
   const stop = async () => {
-    server.closeAllConnections();
-    await new Promise((resolve) => server.close(resolve));
+    await Promise.all(
+      openServers.splice(0).map((server) => {
+        server.closeAllConnections();
+        return new Promise((resolve) => server.close(resolve));
+      })
+    );
+    await ordersService?.disconnect();
+    await catalogService?.disconnect();
+    await usersService?.disconnect();
     await mongoose.disconnect();
     await mongo.stop();
   };
 
   return {
-    api: request(server),
+    api,
     userModel,
     categoryModel,
     productModel,

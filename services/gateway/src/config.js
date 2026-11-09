@@ -36,6 +36,7 @@ export class Config {
     this.usersUrl = readHttpUrl("USERS_URL", env.USERS_URL);
     this.catalogUrl = readHttpUrl("CATALOG_URL", env.CATALOG_URL);
     this.paymentsUrl = readHttpUrl("PAYMENTS_URL", env.PAYMENTS_URL);
+    this.ordersUrl = readHttpUrl("ORDERS_URL", env.ORDERS_URL);
     if (!env.JWT_SECRET) {
       throw new Error("JWT_SECRET is required");
     }

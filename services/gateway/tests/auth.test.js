@@ -33,15 +33,15 @@ const recordingUpstream = (name, calls) => {
 const signedInRoutes = [
   ["get", "/api/v1/auth/user-auth", "users"],
   ["put", "/api/v1/auth/profile", "users"],
-  ["get", "/api/v1/auth/orders", "monolith"],
-  ["post", "/api/v1/product/braintree/payment", "monolith"],
+  ["get", "/api/v1/auth/orders", "orders"],
+  ["post", "/api/v1/product/braintree/payment", "orders"],
 ];
 
 const adminRoutes = [
   ["get", "/api/v1/auth/test", "monolith"],
   ["get", "/api/v1/auth/admin-auth", "users"],
-  ["get", "/api/v1/auth/all-orders", "monolith"],
-  ["put", "/api/v1/auth/order-status/42", "monolith"],
+  ["get", "/api/v1/auth/all-orders", "orders"],
+  ["put", "/api/v1/auth/order-status/42", "orders"],
   ["post", "/api/v1/category/create-category", "catalog"],
   ["put", "/api/v1/category/update-category/42", "catalog"],
   ["delete", "/api/v1/category/delete-category/42", "catalog"],
@@ -57,6 +57,7 @@ let monolith;
 let users;
 let catalog;
 let payments;
+let orders;
 let gateway;
 let calls;
 
@@ -66,12 +67,14 @@ beforeAll(async () => {
   users = await recordingUpstream("users", calls);
   catalog = await recordingUpstream("catalog", calls);
   payments = await recordingUpstream("payments", calls);
+  orders = await recordingUpstream("orders", calls);
   Object.assign(process.env, {
     PORT: "8080",
     MONOLITH_URL: `http://127.0.0.1:${monolith.address().port}`,
     USERS_URL: `http://127.0.0.1:${users.address().port}`,
     CATALOG_URL: `http://127.0.0.1:${catalog.address().port}`,
     PAYMENTS_URL: `http://127.0.0.1:${payments.address().port}`,
+    ORDERS_URL: `http://127.0.0.1:${orders.address().port}`,
     JWT_SECRET: SECRET,
   });
   Config.reset();
@@ -89,6 +92,7 @@ afterAll(async () => {
     close(users),
     close(catalog),
     close(payments),
+    close(orders),
   ]);
 });
 
@@ -227,6 +231,18 @@ describe("public requests", () => {
   });
 });
 
+describe("internal users route", () => {
+  it("POST /internal/users/by-ids is not forwarded anywhere", async () => {
+    const res = await request(gateway)
+      .post("/internal/users/by-ids")
+      .set("Authorization", adminToken)
+      .send({ ids: [] });
+
+    expect(res.status).toBe(404);
+    expect(calls).toHaveLength(0);
+  });
+});
+
 describe("internal payment route", () => {
   it("POST /internal/charge is not forwarded anywhere", async () => {
     const res = await request(gateway)
@@ -290,6 +306,20 @@ describe("routing", () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ served: "payments" });
+  });
+
+  it("sends case variants of order paths to the orders service", async () => {
+    const res = await request(gateway)
+      .get("/API/V1/Auth/ORDERS/")
+      .set("Authorization", userToken);
+
+    expect(res.body).toEqual({ served: "orders" });
+  });
+
+  it("sends a path below order-status to the monolith", async () => {
+    const res = await request(gateway).get("/api/v1/auth/order-status/42/extra");
+
+    expect(res.body).toEqual({ served: "monolith" });
   });
 
   it.each([
