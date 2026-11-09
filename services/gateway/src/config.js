@@ -32,7 +32,6 @@ export class Config {
       throw new Error("Use Config.getInstance()");
     }
     this.port = readPort(env.PORT);
-    this.monolithUrl = readHttpUrl("MONOLITH_URL", env.MONOLITH_URL);
     this.usersUrl = readHttpUrl("USERS_URL", env.USERS_URL);
     this.catalogUrl = readHttpUrl("CATALOG_URL", env.CATALOG_URL);
     this.paymentsUrl = readHttpUrl("PAYMENTS_URL", env.PAYMENTS_URL);

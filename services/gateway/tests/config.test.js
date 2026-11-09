@@ -5,7 +5,6 @@ const savedEnv = { ...process.env };
 
 beforeEach(() => {
   process.env.PORT = "8080";
-  process.env.MONOLITH_URL = "http://backend:4000";
   process.env.USERS_URL = "http://users:4001";
   process.env.CATALOG_URL = "http://catalog:4002";
   process.env.PAYMENTS_URL = "http://payments:4003";
@@ -24,8 +23,8 @@ describe("Config", () => {
     const config = Config.getInstance();
 
     expect(config.port).toBe(8080);
-    expect(config.monolithUrl).toBe("http://backend:4000");
     expect(config.usersUrl).toBe("http://users:4001");
+    expect(config.monolithUrl).toBeUndefined();
     expect(config.jwtSecret).toBe("secret");
   });
 
@@ -61,20 +60,20 @@ describe("Config", () => {
 
   it("returns the same instance and reads env only once", () => {
     const first = Config.getInstance();
-    process.env.MONOLITH_URL = "http://other:4000";
+    process.env.USERS_URL = "http://other:4001";
 
     const second = Config.getInstance();
 
     expect(second).toBe(first);
-    expect(second.monolithUrl).toBe("http://backend:4000");
+    expect(second.usersUrl).toBe("http://users:4001");
   });
 
   it("rereads env after reset", () => {
     Config.getInstance();
-    process.env.MONOLITH_URL = "http://other:4000";
+    process.env.USERS_URL = "http://other:4001";
     Config.reset();
 
-    expect(Config.getInstance().monolithUrl).toBe("http://other:4000");
+    expect(Config.getInstance().usersUrl).toBe("http://other:4001");
   });
 
   it("is immutable", () => {
@@ -109,17 +108,17 @@ describe("Config", () => {
     expect(() => Config.getInstance()).toThrow("PORT must be");
   });
 
-  it("requires MONOLITH_URL", () => {
+  it("does not need MONOLITH_URL", () => {
     delete process.env.MONOLITH_URL;
 
-    expect(() => Config.getInstance()).toThrow("MONOLITH_URL is required");
+    expect(() => Config.getInstance()).not.toThrow();
   });
 
   it.each([
     ["not a url", "must be a valid URL"],
-    ["ftp://backend:4000", "must use http or https"],
-  ])("rejects MONOLITH_URL %s", (value, message) => {
-    process.env.MONOLITH_URL = value;
+    ["ftp://users:4001", "must use http or https"],
+  ])("rejects USERS_URL %s", (value, message) => {
+    process.env.USERS_URL = value;
 
     expect(() => Config.getInstance()).toThrow(message);
   });

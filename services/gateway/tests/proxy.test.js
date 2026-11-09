@@ -17,9 +17,8 @@ const close = (server) => {
   return new Promise((resolve) => server.close(resolve));
 };
 
-const useMonolith = (url) => {
+const useUpstream = (url) => {
   process.env.PORT = "8080";
-  process.env.MONOLITH_URL = url;
   process.env.USERS_URL = url;
   process.env.CATALOG_URL = url;
   process.env.PAYMENTS_URL = url;
@@ -35,11 +34,11 @@ let received;
 beforeAll(async () => {
   const app = express();
   app.use(express.raw({ type: () => true, limit: "5mb" }));
-  app.get("/api/v1/hang", () => {});
-  app.get("/api/v1/binary", (req, res) => {
+  app.get("/api/v1/product/hang", () => {});
+  app.get("/api/v1/product/binary", (req, res) => {
     res.set("Content-Type", "image/png").send(Buffer.from([0, 255, 1, 254]));
   });
-  app.get("/api/v1/headers", (req, res) => {
+  app.get("/api/v1/product/headers", (req, res) => {
     res.set("X-Custom", "kept");
     res.set("Access-Control-Allow-Origin", "*");
     res.cookie("a", "1").cookie("b", "2");
@@ -56,7 +55,7 @@ beforeAll(async () => {
   });
   upstream = await listen(app);
 
-  useMonolith(`http://127.0.0.1:${upstream.address().port}`);
+  useUpstream(`http://127.0.0.1:${upstream.address().port}`);
   gateway = await listen(createApp());
 });
 
@@ -69,7 +68,7 @@ afterAll(async () => {
   await close(upstream);
 });
 
-describe("proxying to the monolith", () => {
+describe("proxying to a service", () => {
   it.each(["get", "post", "put", "delete"])(
     "forwards %s with the full path and query string",
     async (method) => {
@@ -119,7 +118,7 @@ describe("proxying to the monolith", () => {
 
   it("returns binary responses unchanged", async () => {
     const res = await request(gateway)
-      .get("/api/v1/binary")
+      .get("/api/v1/product/binary")
       .buffer(true)
       .parse((response, done) => {
         const chunks = [];
@@ -132,7 +131,7 @@ describe("proxying to the monolith", () => {
   });
 
   it("keeps upstream headers and adds none of its own", async () => {
-    const res = await request(gateway).get("/api/v1/headers");
+    const res = await request(gateway).get("/api/v1/product/headers");
 
     expect(res.headers["x-custom"]).toBe("kept");
     expect(res.headers["access-control-allow-origin"]).toBe("*");
@@ -142,7 +141,7 @@ describe("proxying to the monolith", () => {
 
   it("does not answer on behalf of an upstream that never responds", async () => {
     const error = await request(gateway)
-      .get("/api/v1/hang")
+      .get("/api/v1/product/hang")
       .timeout({ response: 250 })
       .then(
         () => null,
@@ -151,16 +150,18 @@ describe("proxying to the monolith", () => {
 
     expect(error).toMatchObject({ code: "ECONNABORTED" });
   });
-
-  it("forwards the status page at the root", async () => {
-    const res = await request(gateway).get("/");
-
-    expect(res.body).toEqual({ served: "/" });
-  });
 });
 
-describe("requests outside /api/v1", () => {
-  it.each(["/api/v2/auth/login", "/api/v1", "/api/v1evil/x", "/admin"])(
+describe("requests outside the service routes", () => {
+  it.each([
+    "/",
+    "/api/v2/auth/login",
+    "/api/v1",
+    "/api/v1evil/x",
+    "/admin",
+    "/api/v1/auth/test",
+    "/api/v1/unknown/route",
+  ])(
     "does not forward %s",
     async (url) => {
       const res = await request(gateway).get(url);
@@ -171,12 +172,12 @@ describe("requests outside /api/v1", () => {
   );
 });
 
-describe("when the monolith is unavailable", () => {
+describe("when a service is unavailable", () => {
   it("answers 502 in JSON and logs the failure", async () => {
     const dead = await listen(express());
     const { port } = dead.address();
     await close(dead);
-    useMonolith(`http://127.0.0.1:${port}`);
+    useUpstream(`http://127.0.0.1:${port}`);
     const isolated = await listen(createApp());
     const log = jest.spyOn(console, "error").mockImplementation(() => {});
 

@@ -14,7 +14,6 @@ const SIGNED_IN_ROUTES = [
 ];
 
 const ADMIN_ROUTES = [
-  ["get", "/api/v1/auth/test"],
   ["get", "/api/v1/auth/admin-auth"],
   ["get", "/api/v1/auth/all-orders"],
   ["put", "/api/v1/auth/order-status/:orderId"],
