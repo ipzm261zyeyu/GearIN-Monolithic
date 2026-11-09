@@ -34,6 +34,7 @@ export class Config {
     this.port = readPort(env.PORT);
     this.monolithUrl = readHttpUrl("MONOLITH_URL", env.MONOLITH_URL);
     this.usersUrl = readHttpUrl("USERS_URL", env.USERS_URL);
+    this.catalogUrl = readHttpUrl("CATALOG_URL", env.CATALOG_URL);
     if (!env.JWT_SECRET) {
       throw new Error("JWT_SECRET is required");
     }

@@ -7,10 +7,14 @@ import { Logger } from "./logger.js";
 const USERS_PATH =
   /^\/api\/v1\/auth\/(register|login|forgot-password|profile|user-auth|admin-auth)\/?$/i;
 
+const CATALOG_PATH = /^\/api\/v1\/(category\/|product\/(?!braintree(\/|$)))/i;
+
 const isUsersPath = (pathname) => USERS_PATH.test(pathname);
 
+const isCatalogPath = (pathname) => CATALOG_PATH.test(pathname);
+
 const isMonolithPath = (pathname) =>
-  pathname === "/" || pathname.startsWith("/api/v1/");
+  pathname === "/" || /^\/api\/v1\//i.test(pathname);
 
 const createProxy = (target, pathFilter) => {
   const logger = Logger.getInstance();
@@ -51,13 +55,14 @@ const createProxy = (target, pathFilter) => {
 };
 
 export const createApp = () => {
-  const { monolithUrl, usersUrl, jwtSecret } = Config.getInstance();
+  const { monolithUrl, usersUrl, catalogUrl, jwtSecret } = Config.getInstance();
   const app = express();
 
   app.disable("x-powered-by");
   app.use(stripIdentityHeaders);
   app.use(createAuthRouter(jwtSecret));
   app.use(createProxy(usersUrl, isUsersPath));
+  app.use(createProxy(catalogUrl, isCatalogPath));
   app.use(createProxy(monolithUrl, isMonolithPath));
 
   return app;

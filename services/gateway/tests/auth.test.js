@@ -42,17 +42,20 @@ const adminRoutes = [
   ["get", "/api/v1/auth/admin-auth", "users"],
   ["get", "/api/v1/auth/all-orders", "monolith"],
   ["put", "/api/v1/auth/order-status/42", "monolith"],
-  ["post", "/api/v1/category/create-category", "monolith"],
-  ["put", "/api/v1/category/update-category/42", "monolith"],
-  ["delete", "/api/v1/category/delete-category/42", "monolith"],
-  ["post", "/api/v1/product/create-product", "monolith"],
-  ["put", "/api/v1/product/update-product/42", "monolith"],
+  ["post", "/api/v1/category/create-category", "catalog"],
+  ["put", "/api/v1/category/update-category/42", "catalog"],
+  ["delete", "/api/v1/category/delete-category/42", "catalog"],
+  ["post", "/api/v1/product/create-product", "catalog"],
+  ["put", "/api/v1/product/update-product/42", "catalog"],
+  ["delete", "/api/v1/product/delete-product/42", "catalog"],
+  ["post", "/api/v1/product/clone/42", "catalog"],
 ];
 
 const protectedRoutes = [...signedInRoutes, ...adminRoutes];
 
 let monolith;
 let users;
+let catalog;
 let gateway;
 let calls;
 
@@ -60,10 +63,12 @@ beforeAll(async () => {
   calls = [];
   monolith = await recordingUpstream("monolith", calls);
   users = await recordingUpstream("users", calls);
+  catalog = await recordingUpstream("catalog", calls);
   Object.assign(process.env, {
     PORT: "8080",
     MONOLITH_URL: `http://127.0.0.1:${monolith.address().port}`,
     USERS_URL: `http://127.0.0.1:${users.address().port}`,
+    CATALOG_URL: `http://127.0.0.1:${catalog.address().port}`,
     JWT_SECRET: SECRET,
   });
   Config.reset();
@@ -75,7 +80,7 @@ beforeEach(() => {
 });
 
 afterAll(async () => {
-  await Promise.all([close(gateway), close(monolith), close(users)]);
+  await Promise.all([close(gateway), close(monolith), close(users), close(catalog)]);
 });
 
 const expectDenied = (res, message) => {
@@ -200,11 +205,30 @@ describe("public requests", () => {
     expect(calls[0]).toMatchObject({ upstream: "users", method: "OPTIONS" });
   });
 
-  it("does not guard delete-product, which the monolith leaves open", async () => {
-    const res = await request(gateway).delete("/api/v1/product/delete-product/42");
+  it.each([
+    ["get", "/api/v1/category/get-category"],
+    ["get", "/api/v1/product/get-product"],
+    ["get", "/api/v1/product/product-photo/42"],
+    ["post", "/api/v1/product/product-filters"],
+  ])("leaves the catalog read %s %s open", async (method, url) => {
+    const res = await request(gateway)[method](url);
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ served: "monolith" });
+    expect(res.body).toEqual({ served: "catalog" });
+  });
+});
+
+describe("internal catalog routes", () => {
+  it.each([
+    "/internal/products/by-ids",
+    "/internal/stock/reserve",
+    "/internal/stock/release",
+    "/api/v1/internal/stock/reserve",
+    "/api/v1/product/../../internal/stock/reserve",
+  ])("POST %s never reaches the catalog", async (url) => {
+    await request(gateway).post(url).set("Authorization", adminToken);
+
+    expect(calls.filter((call) => call.upstream === "catalog")).toHaveLength(0);
   });
 });
 
@@ -221,8 +245,19 @@ describe("routing", () => {
   });
 
   it.each([
-    ["get", "/api/v1/category/get-category"],
-    ["get", "/api/v1/product/get-product"],
+    ["get", "/api/v1/product/search/mouse"],
+    ["get", "/api/v1/category/single-category/mice"],
+    ["get", "/API/v1/Product/product-count"],
+    ["get", "/api/v1/product/braintreeish"],
+  ])("%s %s goes to the catalog", async (method, url) => {
+    const res = await request(gateway)[method](url);
+
+    expect(res.body).toEqual({ served: "catalog" });
+  });
+
+  it.each([
+    ["get", "/api/v1/product/braintree/token"],
+    ["get", "/API/V1/Product/BRAINTREE/token"],
     ["post", "/api/v1/auth/login-history"],
     ["get", "/"],
   ])("%s %s goes to the monolith", async (method, url) => {

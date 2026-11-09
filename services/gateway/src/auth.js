@@ -23,6 +23,8 @@ const ADMIN_ROUTES = [
   ["delete", "/api/v1/category/delete-category/:id"],
   ["post", "/api/v1/product/create-product"],
   ["put", "/api/v1/product/update-product/:pid"],
+  ["delete", "/api/v1/product/delete-product/:pid"],
+  ["post", "/api/v1/product/clone/:pid"],
 ];
 
 const deny = (req, res, message) => {
