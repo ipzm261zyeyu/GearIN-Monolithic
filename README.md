@@ -1,145 +1,175 @@
 <a name="readme-top"></a>
 
-<!-- PROJECT SHIELDS -->
-<!--
-*** I'm using markdown "reference style" links for readability.
-*** Reference links are enclosed in brackets [ ] instead of parentheses ( ).
-*** See the bottom of this document for the declaration of the reference variables
-*** for contributors-url, forks-url, etc. This is an optional, concise syntax you may use.
-*** https://www.markdownguide.org/basic-syntax/#reference-style-links
--->
-<div  align="center">
-
-[![Contributors][contributors-shield]][contributors-url] [![Forks][forks-shield]][forks-url] [![Stargazers][stars-shield]][stars-url] [![Issues][issues-shield]][issues-url] [![MIT License][license-shield]][license-url]
-
-</div>
-
-<!-- PROJECT LOGO -->
-<br />
 <div align="center">
-  <a href="https://github.com/Code-Flaps/GearIN-Monolithic">
-    <img src="./Assets/Logo.png" alt="Logo" width="80" height="80">
-  </a>
-
-<h3 align="center">GearIN</h3>
-<h4 align="center">Monolithic Architecture</h4>
-  <p align="center">
-    Monolithic Architecture Full Stack E-Commerce Application
-    <br />
-    <a href="https://github.com/Code-Flaps/GearIN-Monolithic"><strong>Explore the docs »</strong></a>
-    <br />
-    <br />
-    <a href="https://github.com/Code-Flaps/GearIN-Monolithic">View Demo</a>
-    ·
-    <a href="https://github.com/Code-Flaps/GearIN-Monolithic/issues">Report Bug</a>
-    ·
-    <a href="https://github.com/Code-Flaps/GearIN-Monolithic/issues">Request Feature</a>
-  </p>
+  <img src="./Assets/Logo.png" alt="Logo" width="80" height="80">
+  <h3>GearIN</h3>
+  <p>Інтернет-магазин на MERN, перебудований із моноліту в сервісну архітектуру за патерном Strangler Fig</p>
 </div>
 
-<!-- TABLE OF CONTENTS -->
-<details>
-  <summary>Table of Contents</summary>
-  <ol>
-    <li>
-      <a href="#about-the-project">About The Project</a>
-      <ul>
-        <li><a href="#built-with">Built With</a></li>
-      </ul>
-    </li>
-    <li>
-      <a href="#getting-started">Getting Started</a>
-      <ul>
-        <li><a href="#installation">Installation</a></li>
-      </ul>
-    </li>
-    <li><a href="#roadmap">Roadmap</a></li>
-    <li><a href="#contributing">Contributing</a></li>
-    <li><a href="#license">License</a></li>
-  </ol>
-</details>
+## Зміст
 
-<!-- ABOUT THE PROJECT -->
-## About The Project
+- [Архітектура](#архітектура)
+- [Сервіси та порти](#сервіси-та-порти)
+- [Запуск](#запуск)
+- [Перенесення даних](#перенесення-даних)
+- [Тести](#тести)
+- [Патерни](#патерни)
+- [Структура репозиторію](#структура-репозиторію)
+- [Ліцензія](#ліцензія)
 
-<!-- [![Product Name Screen Shot][product-screenshot]](https://example.com) -->
+## Архітектура
 
-A Monolithic Architecture Full Stack E-Commerce Application is a comprehensive and self-contained software system that includes both the front-end and back-end components needed for an online store. It is built as a single, unified unit with tightly coupled modules residing in a single codebase.
+Браузер звертається лише до шлюзу. Шлюз перевіряє JWT і роль, передає сервісам заголовки `x-user-id` та `x-user-role` і видаляє такі самі заголовки, надіслані клієнтом. Сервіси спілкуються між собою лише через HTTP/JSON, кожен зі своєю базою.
 
-The front-end is developed using React, a popular JavaScript library for building modular and reusable user interfaces. The back-end is implemented using Node.js, a JavaScript runtime known for its scalability and event-driven architecture.
+```mermaid
+flowchart LR
+    browser["Браузер"] -->|":3000"| frontend["frontend<br/>React + nginx"]
+    browser -->|":8080 /api/v1/*"| gateway["gateway<br/>JWT і роль"]
 
-With a Monolithic Architecture, the entire application, including the user interface, business logic, and data access layers, is deployed as one unit. This simplifies deployment and maintenance but can pose challenges as the application grows larger.
+    gateway --> users["users<br/>:4001"]
+    gateway --> catalog["catalog<br/>:4002"]
+    gateway --> payments["payments<br/>:4003"]
+    gateway --> orders["orders<br/>:4004"]
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+    orders -->|"/internal/products/by-ids<br/>/internal/stock/*"| catalog
+    orders -->|"/internal/charge"| payments
+    orders -->|"/internal/users/by-ids"| users
 
-### Built With
+    users --> usersDb[("gearin_users")]
+    catalog --> catalogDb[("gearin_catalog")]
+    orders --> ordersDb[("gearin_orders")]
+    payments --> braintree["Braintree<br/>або FakeProvider"]
+```
 
-- ReactJS
-- ExpressJS
-- NodeJS
-- MongoDB
+Маршрути `/internal/*` шлюз не пропускає, вони доступні лише всередині мережі Docker.
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+### Оформлення замовлення
 
-<!-- GETTING STARTED -->
-## Getting Started
+Клієнт надсилає лише `productId`, `quantity` і `nonce`. Ціни сервер бере з каталогу.
 
-This is an example of how you may give instructions on setting up your project locally.
-To get a local copy up and running follow these simple example steps.
+1. `orders` отримує назви й ціни з `catalog`.
+2. `catalog` резервує залишки: або всі позиції, або жодної.
+3. `orders` рахує суму та викликає `payments`.
+4. Якщо оплата успішна, зберігається замовлення зі знімком позицій. Якщо ні, резерв повертається.
 
-### Installation
+## Сервіси та порти
 
-To run this project on a local machine see below the given instructions.
+| Сервіс | Порт | Опублікований назовні | База | Відповідає за |
+|---|---|---|---|---|
+| `frontend` | 80 (на хості 3000) | так | — | клієнт React |
+| `gateway` | 8080 | так | — | єдина точка входу, JWT, роль, маршрутизація |
+| `users` | 4001 | ні | `gearin_users` | реєстрація, вхід, профіль, відновлення пароля |
+| `catalog` | 4002 | ні | `gearin_catalog` | категорії, товари, фото, залишки |
+| `payments` | 4003 | ні | немає | токен клієнта, списання коштів |
+| `orders` | 4004 | ні | `gearin_orders` | оформлення та історія замовлень |
 
-- For the frontend see this [Readme.md](./Frontend/Readme.md)
-- For the backend see this [Readme.md](./Backend/Readme.md)
+| Шлях на шлюзі | Сервіс |
+|---|---|
+| `/api/v1/auth/register`, `login`, `forgot-password`, `profile`, `user-auth`, `admin-auth` | `users` |
+| `/api/v1/category/*`, `/api/v1/product/*` | `catalog` |
+| `/api/v1/product/braintree/token` | `payments` |
+| `/api/v1/auth/orders`, `all-orders`, `order-status/:id`, `/api/v1/product/braintree/payment` | `orders` |
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+## Запуск
 
-<!-- ROADMAP -->
-## Roadmap
+Потрібні Docker із Compose і база MongoDB, наприклад кластер MongoDB Atlas.
 
-- [ ] More Modern Frontend Design
-- [ ] Deployment Using Docker and Kubernetes
-- [ ] CI/CD Setup using Jenkins
-- [ ] Live Inventory System Integration
-- [ ] Sales BI Dashboard
+1. Створіть файл налаштувань і заповніть його:
 
-See the [open issues](https://github.com/Code-Flaps/GearIN-Monolithic/issues) for a full list of proposed features (and known issues).
+   ```sh
+   cp .env.example .env
+   ```
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+   | Змінна | Значення |
+   |---|---|
+   | `MONGO_URL` | адреса MongoDB з назвою старої бази в шляху, наприклад `.../gearin`. Сервіси самі перемикаються на власні бази, а стара база є джерелом для перенесення даних |
+   | `JWT_SECRET` | секрет для підпису токенів |
+   | `PAYMENT_PROVIDER` | `braintree` або `fake` |
+   | `BRAINTREE_*` | ключі пісочниці Braintree, потрібні лише для `braintree` |
 
-<!-- CONTRIBUTING -->
-## Contributing
+2. Запустіть усі контейнери:
 
-Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
+   ```sh
+   docker compose up --build
+   ```
 
-If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement".
-Don't forget to give the project a star! Thanks again!
+3. Перенесіть дані, якщо вони є в старій базі (див. нижче).
 
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+4. Відкрийте [http://localhost:3000](http://localhost:3000). API доступне за адресою `http://localhost:8080`.
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+Адреса шлюзу вбудовується в клієнт під час збірки. Її задає `REACT_APP_API_URL` у `docker-compose.yml`.
 
-<!-- LICENSE -->
-## License
+З `PAYMENT_PROVIDER=fake` сервіс платежів працює без ключів, але форма оплати Braintree у браузері не прийме фальшивий токен. Цей режим призначений для тестів і перевірки API.
 
-Distributed under the MIT License. See `LICENSE` for more information.
+### Запуск без Docker
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+У кожному сервісі є файл `.env.example`. Скопіюйте його в `.env` поруч, заповніть і запустіть:
 
-[contributors-shield]: https://img.shields.io/github/contributors/Code-Flaps/GearIN-Monolithic.svg?style=for-the-badge
-[contributors-url]: https://github.com/Code-Flaps/GearIN-Monolithic/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/Code-Flaps/GearIN-Monolithic.svg?style=for-the-badge
-[forks-url]: https://github.com/Code-Flaps/GearIN-Monolithic/network/members
-[stars-shield]: https://img.shields.io/github/stars/Code-Flaps/GearIN-Monolithic.svg?style=for-the-badge
-[stars-url]: https://github.com/Code-Flaps/GearIN-Monolithic/stargazers
-[issues-shield]: https://img.shields.io/github/issues/Code-Flaps/GearIN-Monolithic.svg?style=for-the-badge
-[issues-url]: https://github.com/Code-Flaps/GearIN-Monolithic/issues
-[license-shield]: https://img.shields.io/github/license/Code-Flaps/GearIN-Monolithic.svg?style=for-the-badge
-[license-url]: https://github.com/Code-Flaps/GearIN-Monolithic/blob/main/LICENSE
-[product-screenshot]: images/screenshot.png
+```sh
+npm run install:all
+cd services/users && npm start
+```
+
+Те саме зробіть для `catalog`, `payments`, `orders` і `gateway`, а клієнт запустіть командою `npm start` у папці `Frontend`.
+
+## Перенесення даних
+
+Скрипти копіюють дані зі старої бази в бази сервісів. Запускати їх можна повторно: наявні записи вони не перезаписують.
+
+```sh
+docker compose run --rm users node scripts/migrate-users.js
+docker compose run --rm catalog node scripts/migrate-catalog.js
+docker compose run --rm orders node scripts/migrate-orders.js
+```
+
+Під час перенесення відповіді на секретні питання хешуються, а старі замовлення отримують знімок позицій із поточними назвами й цінами товарів.
+
+## Тести
+
+Перед першим запуском встановіть залежності, потім запустіть усі набори з кореня:
+
+```sh
+npm run install:all
+npm test
+```
+
+| Набір | Що перевіряє |
+|---|---|
+| `services/*`, `npm test` | кожен сервіс окремо: патерни, маршрути, міграції |
+| `legacy/Backend`, `npm test` | характеризаційні тести поведінки старого моноліту |
+| `legacy/Backend`, `npm run test:gateway` | ті самі сценарії та повне оформлення замовлення через шлюз і всі сервіси |
+| `Frontend`, `npm test` | формування позицій замовлення з кошика |
+
+Базу MongoDB для тестів піднімає `mongodb-memory-server`, Braintree замокано.
+
+## Патерни
+
+| Патерн | Де |
+|---|---|
+| Singleton | `Config` у кожному сервісі, `Database` у сервісах із базою, `Logger` у шлюзі |
+| Factory Method | `ProviderFactory` створює `BraintreeProvider` або `FakeProvider` |
+| Abstract Factory | `StorageFactory`: `MongoStorageFactory` та `InMemoryStorageFactory` |
+| Builder | `ProductQueryBuilder`, `OrderBuilder` |
+| Prototype | `Product.clone(overrides)` |
+
+## Структура репозиторію
+
+```text
+.
+├── Frontend/            клієнт React
+├── services/
+│   ├── gateway/         шлюз API
+│   ├── users/           користувачі
+│   ├── catalog/         каталог
+│   ├── payments/        платежі
+│   └── orders/          замовлення
+├── legacy/Backend/      старий моноліт і характеризаційні тести, у запуску не бере участі
+├── Assets/              логотип і дамп даних MongoDB
+└── docker-compose.yml
+```
+
+## Ліцензія
+
+Поширюється за ліцензією MIT. Див. файл `LICENSE`.
+
+<p align="right">(<a href="#readme-top">на початок</a>)</p>
