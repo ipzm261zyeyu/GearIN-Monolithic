@@ -35,6 +35,7 @@ export class Config {
     this.monolithUrl = readHttpUrl("MONOLITH_URL", env.MONOLITH_URL);
     this.usersUrl = readHttpUrl("USERS_URL", env.USERS_URL);
     this.catalogUrl = readHttpUrl("CATALOG_URL", env.CATALOG_URL);
+    this.paymentsUrl = readHttpUrl("PAYMENTS_URL", env.PAYMENTS_URL);
     if (!env.JWT_SECRET) {
       throw new Error("JWT_SECRET is required");
     }

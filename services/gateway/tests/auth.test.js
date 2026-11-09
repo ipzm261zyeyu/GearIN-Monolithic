@@ -56,6 +56,7 @@ const protectedRoutes = [...signedInRoutes, ...adminRoutes];
 let monolith;
 let users;
 let catalog;
+let payments;
 let gateway;
 let calls;
 
@@ -64,11 +65,13 @@ beforeAll(async () => {
   monolith = await recordingUpstream("monolith", calls);
   users = await recordingUpstream("users", calls);
   catalog = await recordingUpstream("catalog", calls);
+  payments = await recordingUpstream("payments", calls);
   Object.assign(process.env, {
     PORT: "8080",
     MONOLITH_URL: `http://127.0.0.1:${monolith.address().port}`,
     USERS_URL: `http://127.0.0.1:${users.address().port}`,
     CATALOG_URL: `http://127.0.0.1:${catalog.address().port}`,
+    PAYMENTS_URL: `http://127.0.0.1:${payments.address().port}`,
     JWT_SECRET: SECRET,
   });
   Config.reset();
@@ -80,7 +83,13 @@ beforeEach(() => {
 });
 
 afterAll(async () => {
-  await Promise.all([close(gateway), close(monolith), close(users), close(catalog)]);
+  await Promise.all([
+    close(gateway),
+    close(monolith),
+    close(users),
+    close(catalog),
+    close(payments),
+  ]);
 });
 
 const expectDenied = (res, message) => {
@@ -218,6 +227,24 @@ describe("public requests", () => {
   });
 });
 
+describe("internal payment route", () => {
+  it("POST /internal/charge is not forwarded anywhere", async () => {
+    const res = await request(gateway)
+      .post("/internal/charge")
+      .set("Authorization", adminToken)
+      .send({ amount: 1, nonce: "n" });
+
+    expect(res.status).toBe(404);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("POST /api/v1/internal/charge never reaches the payments service", async () => {
+    await request(gateway).post("/api/v1/internal/charge").set("Authorization", adminToken);
+
+    expect(calls.filter((call) => call.upstream === "payments")).toHaveLength(0);
+  });
+});
+
 describe("internal catalog routes", () => {
   it.each([
     "/internal/products/by-ids",
@@ -257,7 +284,16 @@ describe("routing", () => {
 
   it.each([
     ["get", "/api/v1/product/braintree/token"],
-    ["get", "/API/V1/Product/BRAINTREE/token"],
+    ["get", "/API/V1/Product/BRAINTREE/token/"],
+  ])("%s %s goes to the payments service without a token", async (method, url) => {
+    const res = await request(gateway)[method](url);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ served: "payments" });
+  });
+
+  it.each([
+    ["get", "/api/v1/product/braintree/token/extra"],
     ["post", "/api/v1/auth/login-history"],
     ["get", "/"],
   ])("%s %s goes to the monolith", async (method, url) => {
