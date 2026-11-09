@@ -1,0 +1,27 @@
+services:
+  backend:
+    build: ./Backend
+    env_file:
+      - ./Backend/.env
+    environment:
+      PORT: 4000
+
+  gateway:
+    build: ./services/gateway
+    environment:
+      PORT: 8080
+      MONOLITH_URL: http://backend:4000
+    ports:
+      - "8080:8080"
+    depends_on:
+      - backend
+
+  frontend:
+    build:
+      context: ./Frontend
+      args:
+        REACT_APP_API_URL: http://localhost:8080
+    ports:
+      - "3000:80"
+    depends_on:
+      - gateway

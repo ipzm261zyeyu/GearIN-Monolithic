@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Checkbox, Radio } from "antd";
 import { Prices } from "../Components/Prices";
 import { useCart } from "../Context/Cart";
-import axios from "axios";
+import api, { photoUrl } from "../api";
 import toast from "react-hot-toast";
 import Layout from "./../Components/Layout/Layout";
 import { AiOutlineReload } from "react-icons/ai";
@@ -23,7 +23,7 @@ const HomePage = () => {
   //get all cat
   const getAllCategory = async () => {
     try {
-      const { data } = await axios.get("http://localhost:4000/api/v1/category/get-category");
+      const { data } = await api.get("/api/v1/category/get-category");
       if (data?.success) {
         setCategories(data?.category);
       }
@@ -40,7 +40,7 @@ const HomePage = () => {
   const getAllProducts = async () => {
     try {
       setLoading(true);
-      const { data } = await axios.get(`http://localhost:4000/api/v1/product/product-list/${page}`);
+      const { data } = await api.get(`/api/v1/product/product-list/${page}`);
       setLoading(false);
       setProducts(data.products);
     } catch (error) {
@@ -52,7 +52,7 @@ const HomePage = () => {
   //getTotal Count
   const getTotal = async () => {
     try {
-      const { data } = await axios.get("http://localhost:4000/api/v1/product/product-count");
+      const { data } = await api.get("/api/v1/product/product-count");
       setTotal(data?.total);
     } catch (error) {
       console.log(error);
@@ -67,7 +67,7 @@ const HomePage = () => {
   const loadMore = async () => {
     try {
       setLoading(true);
-      const { data } = await axios.get(`http://localhost:4000/api/v1/product/product-list/${page}`);
+      const { data } = await api.get(`/api/v1/product/product-list/${page}`);
       setLoading(false);
       setProducts([...products, ...data?.products]);
     } catch (error) {
@@ -97,7 +97,7 @@ const HomePage = () => {
   //get filterd product
   const filterProduct = async () => {
     try {
-      const { data } = await axios.post("http://localhost:4000/api/v1/product/product-filters", {
+      const { data } = await api.post("/api/v1/product/product-filters", {
         checked,
         radio,
       });
@@ -157,7 +157,7 @@ const HomePage = () => {
               {products?.map((p) => (
                 <div className="card m-2" key={p._id}>
                   <img
-                    src={`http://localhost:4000/api/v1/product/product-photo/${p._id}`}
+                    src={photoUrl(p._id)}
                     className="card-img-top"
                     alt={p.name}
                   />
