@@ -9,7 +9,11 @@ const USERS_PATH =
 
 const CATALOG_PATH = /^\/api\/v1\/(category\/|product\/(?!braintree(\/|$)))/i;
 
+const PAYMENTS_PATH = /^\/api\/v1\/product\/braintree\/token\/?$/i;
+
 const isUsersPath = (pathname) => USERS_PATH.test(pathname);
+
+const isPaymentsPath = (pathname) => PAYMENTS_PATH.test(pathname);
 
 const isCatalogPath = (pathname) => CATALOG_PATH.test(pathname);
 
@@ -55,7 +59,8 @@ const createProxy = (target, pathFilter) => {
 };
 
 export const createApp = () => {
-  const { monolithUrl, usersUrl, catalogUrl, jwtSecret } = Config.getInstance();
+  const { monolithUrl, usersUrl, catalogUrl, paymentsUrl, jwtSecret } =
+    Config.getInstance();
   const app = express();
 
   app.disable("x-powered-by");
@@ -63,6 +68,7 @@ export const createApp = () => {
   app.use(createAuthRouter(jwtSecret));
   app.use(createProxy(usersUrl, isUsersPath));
   app.use(createProxy(catalogUrl, isCatalogPath));
+  app.use(createProxy(paymentsUrl, isPaymentsPath));
   app.use(createProxy(monolithUrl, isMonolithPath));
 
   return app;

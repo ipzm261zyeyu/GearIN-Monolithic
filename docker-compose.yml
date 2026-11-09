@@ -22,6 +22,14 @@ services:
       PORT: 4002
       MONGO_DB_NAME: gearin_catalog
 
+  payments:
+    build: ./services/payments
+    env_file:
+      - ./Backend/.env
+    environment:
+      PORT: 4003
+      PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-braintree}
+
   gateway:
     build: ./services/gateway
     env_file:
@@ -31,12 +39,14 @@ services:
       MONOLITH_URL: http://backend:4000
       USERS_URL: http://users:4001
       CATALOG_URL: http://catalog:4002
+      PAYMENTS_URL: http://payments:4003
     ports:
       - "8080:8080"
     depends_on:
       - backend
       - users
       - catalog
+      - payments
 
   frontend:
     build:
