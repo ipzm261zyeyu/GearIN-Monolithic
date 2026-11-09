@@ -6,15 +6,37 @@ services:
     environment:
       PORT: 4000
 
+  users:
+    build: ./services/users
+    env_file:
+      - ./Backend/.env
+    environment:
+      PORT: 4001
+      MONGO_DB_NAME: gearin_users
+
+  catalog:
+    build: ./services/catalog
+    env_file:
+      - ./Backend/.env
+    environment:
+      PORT: 4002
+      MONGO_DB_NAME: gearin_catalog
+
   gateway:
     build: ./services/gateway
+    env_file:
+      - ./Backend/.env
     environment:
       PORT: 8080
       MONOLITH_URL: http://backend:4000
+      USERS_URL: http://users:4001
+      CATALOG_URL: http://catalog:4002
     ports:
       - "8080:8080"
     depends_on:
       - backend
+      - users
+      - catalog
 
   frontend:
     build:
