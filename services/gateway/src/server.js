@@ -5,8 +5,8 @@ import { Logger } from "./logger.js";
 
 dotenv.config({ quiet: true });
 
-const { port, monolithUrl } = Config.getInstance();
+const { port } = Config.getInstance();
 
 createApp().listen(port, () => {
-  Logger.getInstance().info("gateway started", { port, monolithUrl });
+  Logger.getInstance().info("gateway started", { port });
 });

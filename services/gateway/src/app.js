@@ -22,9 +22,6 @@ const isPaymentsPath = (pathname) => PAYMENTS_PATH.test(pathname);
 
 const isCatalogPath = (pathname) => CATALOG_PATH.test(pathname);
 
-const isMonolithPath = (pathname) =>
-  pathname === "/" || /^\/api\/v1\//i.test(pathname);
-
 const createProxy = (target, pathFilter) => {
   const logger = Logger.getInstance();
 
@@ -64,8 +61,7 @@ const createProxy = (target, pathFilter) => {
 };
 
 export const createApp = () => {
-  const { monolithUrl, usersUrl, catalogUrl, paymentsUrl, ordersUrl, jwtSecret } =
-    Config.getInstance();
+  const { usersUrl, catalogUrl, paymentsUrl, ordersUrl, jwtSecret } = Config.getInstance();
   const app = express();
 
   app.disable("x-powered-by");
@@ -75,7 +71,6 @@ export const createApp = () => {
   app.use(createProxy(catalogUrl, isCatalogPath));
   app.use(createProxy(paymentsUrl, isPaymentsPath));
   app.use(createProxy(ordersUrl, isOrdersPath));
-  app.use(createProxy(monolithUrl, isMonolithPath));
 
   return app;
 };

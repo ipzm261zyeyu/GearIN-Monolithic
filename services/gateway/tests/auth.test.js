@@ -38,7 +38,6 @@ const signedInRoutes = [
 ];
 
 const adminRoutes = [
-  ["get", "/api/v1/auth/test", "monolith"],
   ["get", "/api/v1/auth/admin-auth", "users"],
   ["get", "/api/v1/auth/all-orders", "orders"],
   ["put", "/api/v1/auth/order-status/42", "orders"],
@@ -53,7 +52,6 @@ const adminRoutes = [
 
 const protectedRoutes = [...signedInRoutes, ...adminRoutes];
 
-let monolith;
 let users;
 let catalog;
 let payments;
@@ -63,14 +61,12 @@ let calls;
 
 beforeAll(async () => {
   calls = [];
-  monolith = await recordingUpstream("monolith", calls);
   users = await recordingUpstream("users", calls);
   catalog = await recordingUpstream("catalog", calls);
   payments = await recordingUpstream("payments", calls);
   orders = await recordingUpstream("orders", calls);
   Object.assign(process.env, {
     PORT: "8080",
-    MONOLITH_URL: `http://127.0.0.1:${monolith.address().port}`,
     USERS_URL: `http://127.0.0.1:${users.address().port}`,
     CATALOG_URL: `http://127.0.0.1:${catalog.address().port}`,
     PAYMENTS_URL: `http://127.0.0.1:${payments.address().port}`,
@@ -88,7 +84,6 @@ beforeEach(() => {
 afterAll(async () => {
   await Promise.all([
     close(gateway),
-    close(monolith),
     close(users),
     close(catalog),
     close(payments),
@@ -316,19 +311,18 @@ describe("routing", () => {
     expect(res.body).toEqual({ served: "orders" });
   });
 
-  it("sends a path below order-status to the monolith", async () => {
-    const res = await request(gateway).get("/api/v1/auth/order-status/42/extra");
-
-    expect(res.body).toEqual({ served: "monolith" });
-  });
 
   it.each([
     ["get", "/api/v1/product/braintree/token/extra"],
     ["post", "/api/v1/auth/login-history"],
     ["get", "/"],
-  ])("%s %s goes to the monolith", async (method, url) => {
-    const res = await request(gateway)[method](url);
+    ["get", "/api/v1/auth/order-status/42/extra"],
+    ["get", "/api/v1/auth/test"],
+    ["get", "/api/v1/unknown/route"],
+  ])("%s %s is not forwarded anywhere", async (method, url) => {
+    const res = await request(gateway)[method](url).set("Authorization", adminToken);
 
-    expect(res.body).toEqual({ served: "monolith" });
+    expect(res.status).toBe(404);
+    expect(calls).toHaveLength(0);
   });
 });

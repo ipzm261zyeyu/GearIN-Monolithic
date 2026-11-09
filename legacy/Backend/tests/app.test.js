@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, jest } from "@jes
 import fs from "fs";
 import mongoose from "mongoose";
 import path from "path";
-import { startApp } from "./helpers/harness.js";
+import { describeDirect, describeGateway, startApp } from "./helpers/harness.js";
 
 let ctx;
 let connectDB;
@@ -15,7 +15,7 @@ beforeAll(async () => {
 afterEach(() => ctx.reset());
 afterAll(() => ctx.stop());
 
-describe("GET /", () => {
+describeDirect("GET /", () => {
   it("reports the service status", async () => {
     const res = await ctx.api.get("/");
 
@@ -24,7 +24,16 @@ describe("GET /", () => {
   });
 });
 
-describe("connectDB", () => {
+describeGateway("GET / through the gateway", () => {
+  // Сторінка статусу належала моноліту, тому після його відключення шлюз її не обслуговує
+  it("no longer exists", async () => {
+    const res = await ctx.api.get("/");
+
+    expect(res.status).toBe(404);
+  });
+});
+
+describeDirect("connectDB", () => {
   it("connects with MONGO_URL and logs the host", async () => {
     process.env.MONGO_URL = "mongodb://example/GearIN";
     const connect = jest
@@ -52,7 +61,7 @@ describe("connectDB", () => {
 
 describe("frontend client", () => {
   it("takes the server address from REACT_APP_API_URL in a single module", () => {
-    const root = path.resolve(process.cwd(), "../Frontend/src");
+    const root = path.resolve(process.cwd(), "../../Frontend/src");
     const sources = fs
       .readdirSync(root, { recursive: true })
       .filter((file) => file.endsWith(".js"))
