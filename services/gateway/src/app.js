@@ -11,7 +11,12 @@ const CATALOG_PATH = /^\/api\/v1\/(category\/|product\/(?!braintree(\/|$)))/i;
 
 const PAYMENTS_PATH = /^\/api\/v1\/product\/braintree\/token\/?$/i;
 
+const ORDERS_PATH =
+  /^\/api\/v1\/(auth\/(orders|all-orders|order-status\/[^/]+)|product\/braintree\/payment)\/?$/i;
+
 const isUsersPath = (pathname) => USERS_PATH.test(pathname);
+
+const isOrdersPath = (pathname) => ORDERS_PATH.test(pathname);
 
 const isPaymentsPath = (pathname) => PAYMENTS_PATH.test(pathname);
 
@@ -59,7 +64,7 @@ const createProxy = (target, pathFilter) => {
 };
 
 export const createApp = () => {
-  const { monolithUrl, usersUrl, catalogUrl, paymentsUrl, jwtSecret } =
+  const { monolithUrl, usersUrl, catalogUrl, paymentsUrl, ordersUrl, jwtSecret } =
     Config.getInstance();
   const app = express();
 
@@ -69,6 +74,7 @@ export const createApp = () => {
   app.use(createProxy(usersUrl, isUsersPath));
   app.use(createProxy(catalogUrl, isCatalogPath));
   app.use(createProxy(paymentsUrl, isPaymentsPath));
+  app.use(createProxy(ordersUrl, isOrdersPath));
   app.use(createProxy(monolithUrl, isMonolithPath));
 
   return app;
