@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "@jest/globals";
 import {
+  VIA_GATEWAY,
   expectNoResponse,
   itDirect,
   itGateway,
@@ -11,7 +12,7 @@ let ctx;
 
 const ID = "64b000000000000000000000";
 
-const adminRoutes = [
+const monolithAdminRoutes = [
   ["get", "/api/v1/auth/test"],
   ["get", "/api/v1/auth/admin-auth"],
   ["get", "/api/v1/auth/all-orders"],
@@ -22,6 +23,11 @@ const adminRoutes = [
   ["post", "/api/v1/product/create-product"],
   ["put", `/api/v1/product/update-product/${ID}`],
 ];
+
+// Маршрут /auth/test існував лише в моноліті, тому через шлюз його більше немає
+const adminRoutes = VIA_GATEWAY
+  ? monolithAdminRoutes.filter(([, url]) => url !== "/api/v1/auth/test")
+  : monolithAdminRoutes;
 
 const trustsGatewayRole = ([, url]) =>
   /\/api\/v1\/(category|product)\/|\/all-orders|\/order-status\//.test(url);

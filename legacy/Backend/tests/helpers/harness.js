@@ -59,17 +59,19 @@ const listen = (app) =>
     });
   });
 
-const expose = async (app) => {
-  const monolith = await listen(app);
-  if (!VIA_GATEWAY) {
-    return request(monolith);
-  }
+const startGateway = async () => {
   process.env.PORT = "8080";
-  process.env.MONOLITH_URL = `http://127.0.0.1:${monolith.address().port}`;
-  const { Config } = await import("../../../services/gateway/src/config.js");
-  const { createApp } = await import("../../../services/gateway/src/app.js");
-  Config.reset();
+  const { createApp } = await import("../../../../services/gateway/src/app.js");
   return request(await listen(createApp()));
+};
+
+const loadMonolith = async () => {
+  const { default: app } = await import("../../app.js");
+  const { default: userModel } = await import("../../models/userModel.js");
+  const { default: categoryModel } = await import("../../models/categoryModel.js");
+  const { default: productModel } = await import("../../models/productModel.js");
+  const { default: orderModel } = await import("../../models/orderModel.js");
+  return { app, userModel, categoryModel, productModel, orderModel };
 };
 
 const startUsersService = async (mongoUri, dbName) => {
@@ -78,10 +80,10 @@ const startUsersService = async (mongoUri, dbName) => {
     MONGO_URL: mongoUri,
     MONGO_DB_NAME: dbName,
   });
-  const { Database } = await import("../../../services/users/src/database.js");
-  const { createApp } = await import("../../../services/users/src/app.js");
+  const { Database } = await import("../../../../services/users/src/database.js");
+  const { createApp } = await import("../../../../services/users/src/app.js");
   const { default: userModel } = await import(
-    "../../../services/users/src/models/userModel.js"
+    "../../../../services/users/src/models/userModel.js"
   );
   await Database.getInstance().connect();
   const server = await listen(createApp());
@@ -95,16 +97,16 @@ const startCatalogService = async (mongoUri, dbName) => {
     MONGO_URL: mongoUri,
     MONGO_DB_NAME: dbName,
   });
-  const { Database } = await import("../../../services/catalog/src/database.js");
-  const { createApp } = await import("../../../services/catalog/src/app.js");
+  const { Database } = await import("../../../../services/catalog/src/database.js");
+  const { createApp } = await import("../../../../services/catalog/src/app.js");
   const { MongoStorageFactory } = await import(
-    "../../../services/catalog/src/storage/MongoStorageFactory.js"
+    "../../../../services/catalog/src/storage/MongoStorageFactory.js"
   );
   const { default: productModel } = await import(
-    "../../../services/catalog/src/models/productModel.js"
+    "../../../../services/catalog/src/models/productModel.js"
   );
   const { default: categoryModel } = await import(
-    "../../../services/catalog/src/models/categoryModel.js"
+    "../../../../services/catalog/src/models/categoryModel.js"
   );
   await Database.getInstance().connect();
   const server = await listen(createApp(new MongoStorageFactory()));
@@ -117,9 +119,9 @@ const startCatalogService = async (mongoUri, dbName) => {
 };
 
 const startPaymentsService = async () => {
-  const { createApp } = await import("../../../services/payments/src/app.js");
+  const { createApp } = await import("../../../../services/payments/src/app.js");
   const { BraintreeProvider } = await import(
-    "../../../services/payments/src/providers/BraintreeProvider.js"
+    "../../../../services/payments/src/providers/BraintreeProvider.js"
   );
   class SharedGatewayClient {
     constructor() {
@@ -140,14 +142,14 @@ const startOrdersService = async (mongoUri, dbName) => {
     MONGO_URL: mongoUri,
     MONGO_DB_NAME: dbName,
   });
-  const { Config } = await import("../../../services/orders/src/config.js");
-  const { Database } = await import("../../../services/orders/src/database.js");
-  const { createApp } = await import("../../../services/orders/src/app.js");
+  const { Config } = await import("../../../../services/orders/src/config.js");
+  const { Database } = await import("../../../../services/orders/src/database.js");
+  const { createApp } = await import("../../../../services/orders/src/app.js");
   const { createClients } = await import(
-    "../../../services/orders/src/clients/index.js"
+    "../../../../services/orders/src/clients/index.js"
   );
   const { default: orderModel } = await import(
-    "../../../services/orders/src/models/orderModel.js"
+    "../../../../services/orders/src/models/orderModel.js"
   );
   await Database.getInstance().connect();
   const server = await listen(createApp(createClients(Config.getInstance())));
@@ -165,7 +167,7 @@ export const mountController = async (controller) => {
   app.post("/", (req, res) => {
     controller(req, res).then(() => finish(null), finish);
   });
-  return { api: await expose(app), settled };
+  return { api: request(await listen(app)), settled };
 };
 
 export const startApp = async () => {
@@ -199,21 +201,13 @@ export const startApp = async () => {
     ? await startOrdersService(mongo.getUri(), "gearin-test")
     : null;
 
-  const { default: app } = await import("../../app.js");
-  const { default: monolithUserModel } = await import("../../models/userModel.js");
-  const userModel = usersService?.userModel ?? monolithUserModel;
-  const { default: monolithCategoryModel } = await import(
-    "../../models/categoryModel.js"
-  );
-  const { default: monolithProductModel } = await import(
-    "../../models/productModel.js"
-  );
-  const categoryModel = catalogService?.categoryModel ?? monolithCategoryModel;
-  const productModel = catalogService?.productModel ?? monolithProductModel;
-  const { default: monolithOrderModel } = await import("../../models/orderModel.js");
-  const orderModel = ordersService?.orderModel ?? monolithOrderModel;
+  const monolith = VIA_GATEWAY ? null : await loadMonolith();
+  const userModel = usersService?.userModel ?? monolith.userModel;
+  const categoryModel = catalogService?.categoryModel ?? monolith.categoryModel;
+  const productModel = catalogService?.productModel ?? monolith.productModel;
+  const orderModel = ordersService?.orderModel ?? monolith.orderModel;
 
-  const api = await expose(app);
+  const api = VIA_GATEWAY ? await startGateway() : request(await listen(monolith.app));
   let sequence = 0;
 
   const createUser = async (overrides = {}) => {
@@ -259,11 +253,8 @@ export const startApp = async () => {
     jest.restoreAllMocks();
     gateway.clientToken.generate.mockReset();
     gateway.transaction.sale.mockReset();
-    await Promise.all(
-      Object.values(mongoose.connection.collections).map((collection) =>
-        collection.deleteMany({})
-      )
-    );
+    const collections = await mongoose.connection.db.collections();
+    await Promise.all(collections.map((collection) => collection.deleteMany({})));
   };
 
   const stop = async () => {

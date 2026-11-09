@@ -47,8 +47,13 @@ afterEach(() => ctx.reset());
 afterAll(() => ctx.stop());
 
 describe("payment gateway construction", () => {
+  // KNOWN-DEFECT-8 виправлено: у працюючій системі клієнт створює лише BraintreeProvider, а не імпорт контролера
+  itGateway("does not build a Braintree client at import", () => {
+    expect(gatewayCallsAtImport).toEqual([]);
+  });
+
   // KNOWN-DEFECT-8
-  it("builds the Braintree client while the controller module is imported", () => {
+  itDirect("builds the Braintree client while the controller module is imported", () => {
     expect(gatewayCallsAtImport).toEqual([
       {
         environment: "sandbox",
@@ -60,7 +65,7 @@ describe("payment gateway construction", () => {
   });
 
   // KNOWN-DEFECT-8
-  it("relies on a client that refuses to be built without keys", () => {
+  itDirect("relies on a client that refuses to be built without keys", () => {
     const real = jest.requireActual("braintree");
 
     expect(

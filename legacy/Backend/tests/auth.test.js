@@ -353,7 +353,7 @@ describe("POST /api/v1/auth/forgot-password", () => {
 });
 
 describe("protected checks", () => {
-  it("GET /api/v1/auth/test answers for an admin", async () => {
+  itDirect("GET /api/v1/auth/test answers for an admin", async () => {
     const admin = await ctx.createAdmin();
 
     const res = await ctx.api
@@ -362,6 +362,17 @@ describe("protected checks", () => {
 
     expect(res.status).toBe(200);
     expect(res.text).toBe("Protected Routes");
+  });
+
+  // Тестовий маршрут існував лише в моноліті й після його відключення недоступний
+  itGateway("GET /api/v1/auth/test no longer exists", async () => {
+    const admin = await ctx.createAdmin();
+
+    const res = await ctx.api
+      .get("/api/v1/auth/test")
+      .set("Authorization", tokenFor(admin));
+
+    expect(res.status).toBe(404);
   });
 
   it("GET /api/v1/auth/user-auth answers ok for a signed-in user", async () => {
