@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import DropIn from "braintree-web-drop-in-react";
 import { AiFillWarning } from "react-icons/ai";
 import api, { photoUrl } from "../api";
+import { toOrderItems } from "../Helpers/cartItems";
 import toast from "react-hot-toast";
 import "../Styles/CartStyles.css";
 
@@ -65,7 +66,7 @@ const CartPage = () => {
       const { nonce } = await instance.requestPaymentMethod();
       const { data } = await api.post("/api/v1/product/braintree/payment", {
         nonce,
-        cart,
+        items: toOrderItems(cart),
       });
       setLoading(false);
       localStorage.removeItem("cart");
@@ -75,6 +76,7 @@ const CartPage = () => {
     } catch (error) {
       console.log(error);
       setLoading(false);
+      toast.error(error.response?.data?.message ?? "Payment Failed");
     }
   };
   return (

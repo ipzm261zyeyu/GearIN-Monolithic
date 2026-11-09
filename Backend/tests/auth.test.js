@@ -6,6 +6,8 @@ import {
   PASSWORD,
   expectNoResponse,
   failing,
+  itDirect,
+  itGateway,
   mountController,
   startApp,
   tokenFor,
@@ -52,7 +54,7 @@ describe("POST /api/v1/auth/register", () => {
     expect(await ctx.userModel.countDocuments()).toBe(0);
   });
 
-  it("creates a user and returns the whole document", async () => {
+  itDirect("creates a user and returns the whole document", async () => {
     const res = await ctx.api.post("/api/v1/auth/register").send(registration);
 
     expect(res.status).toBe(201);
@@ -64,13 +66,37 @@ describe("POST /api/v1/auth/register", () => {
     expect(await bcrypt.compare("secret123", res.body.user.password)).toBe(true);
   });
 
+  // KNOWN-DEFECT-2 виправлено в services/users: у відповіді тепер хеш, а не відкрите значення
+  itGateway("creates a user and returns the whole document with a hashed answer", async () => {
+    const res = await ctx.api.post("/api/v1/auth/register").send(registration);
+
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({
+      success: true,
+      message: "User Register Successfully",
+      user: { name: "Olena", email: "olena@gearin.test", role: 0 },
+    });
+    expect(await bcrypt.compare("secret123", res.body.user.password)).toBe(true);
+    expect(await bcrypt.compare("blue", res.body.user.answer)).toBe(true);
+  });
+
   // KNOWN-DEFECT-2
-  it("stores the secret answer as plain text", async () => {
+  itDirect("stores the secret answer as plain text", async () => {
     await ctx.api.post("/api/v1/auth/register").send(registration);
 
     const stored = await ctx.userModel.findOne({ email: registration.email });
 
     expect(stored.answer).toBe("blue");
+  });
+
+  // KNOWN-DEFECT-2 виправлено в services/users: база зберігає лише bcrypt-хеш відповіді
+  itGateway("stores the secret answer as a hash", async () => {
+    await ctx.api.post("/api/v1/auth/register").send(registration);
+
+    const stored = await ctx.userModel.findOne({ email: registration.email });
+
+    expect(stored.answer).not.toBe("blue");
+    expect(await bcrypt.compare("blue", stored.answer)).toBe(true);
   });
 
   it("answers 200 with success false for a registered email", async () => {
@@ -135,7 +161,7 @@ describe("POST /api/v1/auth/login", () => {
     expect(res.body).toEqual({ success: false, message: "Invalid Password" });
   });
 
-  it("returns the profile and a seven day token that carries only the id", async () => {
+  itDirect("returns the profile and a seven day token that carries only the id", async () => {
     const user = await ctx.createAdmin();
 
     const res = await ctx.api
@@ -158,6 +184,53 @@ describe("POST /api/v1/auth/login", () => {
     expect(Object.keys(payload).sort()).toEqual(["_id", "exp", "iat"]);
     expect(payload._id).toBe(String(user._id));
     expect(payload.exp - payload.iat).toBe(7 * 24 * 60 * 60);
+  });
+
+  // Токен тепер містить роль, бо її перевіряє шлюз без звернення до бази
+  itGateway("returns the profile and a seven day token with the id and the role", async () => {
+    const user = await ctx.createAdmin();
+
+    const res = await ctx.api
+      .post("/api/v1/auth/login")
+      .send({ email: user.email, password: PASSWORD });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.message).toBe("Login Successfully");
+    expect(res.body.user).toEqual({
+      _id: String(user._id),
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      address: user.address,
+      role: 1,
+    });
+
+    const payload = JWT.verify(res.body.token, JWT_SECRET);
+    expect(Object.keys(payload).sort()).toEqual(["_id", "exp", "iat", "role"]);
+    expect(payload._id).toBe(String(user._id));
+    expect(payload.role).toBe(1);
+    expect(payload.exp - payload.iat).toBe(7 * 24 * 60 * 60);
+  });
+
+  // Токен із входу має відкривати маршрути обох сервісів за шлюзом
+  itGateway("issues a token accepted by the users service and the monolith", async () => {
+    const user = await ctx.createAdmin();
+    const {
+      body: { token },
+    } = await ctx.api
+      .post("/api/v1/auth/login")
+      .send({ email: user.email, password: PASSWORD });
+
+    const adminCheck = await ctx.api
+      .get("/api/v1/auth/admin-auth")
+      .set("Authorization", token);
+    const allOrders = await ctx.api
+      .get("/api/v1/auth/all-orders")
+      .set("Authorization", token);
+
+    expect(adminCheck.status).toBe(200);
+    expect(allOrders.status).toBe(200);
   });
 
   it("answers 500 when the database fails", async () => {
@@ -220,8 +293,27 @@ describe("POST /api/v1/auth/forgot-password", () => {
     expect(res.status).toBe(200);
   });
 
+  // KNOWN-DEFECT-4 виправлено в services/users: після 400 виконання зупиняється, пароль не змінюється
+  itGateway.each([
+    ["email", { answer: "blue", newPassword: "changed123" }, "Email is required"],
+    ["answer", { email: "known", newPassword: "changed123" }, "Answer is required"],
+    ["newPassword", { email: "known", answer: "blue" }, "New Password is required"],
+  ])("stops after answering 400 for a missing %s", async (_field, payload, message) => {
+    const user = await ctx.createUser();
+    const body = {
+      ...payload,
+      ...(payload.email ? { email: user.email } : {}),
+    };
+
+    const res = await ctx.api.post("/api/v1/auth/forgot-password").send(body);
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ message });
+    expect((await ctx.userModel.findById(user._id)).password).toBe(user.password);
+  });
+
   // KNOWN-DEFECT-4
-  it.each([
+  itDirect.each([
     ["email", { answer: "blue", newPassword: "changed123" }, "Email is required"],
     ["answer", { email: "known", newPassword: "changed123" }, "Answer is required"],
     ["newPassword", { email: "known", answer: "blue" }, "New Password is required"],
@@ -233,7 +325,7 @@ describe("POST /api/v1/auth/forgot-password", () => {
         ...payload,
         ...(payload.email ? { email: user.email } : {}),
       };
-      const { api, settled } = mountController(forgotPasswordController);
+      const { api, settled } = await mountController(forgotPasswordController);
 
       const res = await api.post("/").send(body);
 
@@ -294,7 +386,8 @@ describe("protected checks", () => {
     expect(res.body).toEqual({ ok: true });
   });
 
-  it("does not accept a token with the Bearer prefix", async () => {
+  // KNOWN-DEFECT-3
+  itDirect("does not accept a token with the Bearer prefix", async () => {
     const user = await ctx.createUser();
 
     await expectNoResponse(
@@ -302,6 +395,18 @@ describe("protected checks", () => {
         .get("/api/v1/auth/user-auth")
         .set("Authorization", `Bearer ${tokenFor(user)}`)
     );
+  });
+
+  // KNOWN-DEFECT-3 виправлено на шлюзі: токен із префіксом Bearer невалідний, тому 401 замість зависання
+  itGateway("answers 401 for a token with the Bearer prefix", async () => {
+    const user = await ctx.createUser();
+
+    const res = await ctx.api
+      .get("/api/v1/auth/user-auth")
+      .set("Authorization", `Bearer ${tokenFor(user)}`);
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ success: false, message: "Invalid or missing token" });
   });
 });
 

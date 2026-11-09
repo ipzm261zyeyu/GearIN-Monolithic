@@ -3,6 +3,8 @@ import mongoose from "mongoose";
 import {
   expectNoResponse,
   failing,
+  itDirect,
+  itGateway,
   startApp,
   tokenFor,
 } from "./helpers/harness.js";
@@ -82,15 +84,23 @@ describe("POST /api/v1/product/create-product", () => {
   });
 
   // KNOWN-DEFECT-7
-  it.each(missingFields)("answers 500 when %s is missing", async (field, error) => {
+  itDirect.each(missingFields)("answers 500 when %s is missing", async (field, error) => {
     const res = await create(without(field));
 
     expect(res.status).toBe(500);
     expect(res.body).toEqual({ error });
   });
 
+  // KNOWN-DEFECT-7 виправлено в services/catalog: помилка клієнта тепер 400, а не 500
+  itGateway.each(missingFields)("answers 400 when %s is missing", async (field, error) => {
+    const res = await create(without(field));
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error });
+  });
+
   // KNOWN-DEFECT-7
-  it("answers 500 for a photo over the size limit", async () => {
+  itDirect("answers 500 for a photo over the size limit", async () => {
     const res = await create(fields()).attach("photo", OVERSIZED, {
       filename: "big.png",
       contentType: "image/png",
@@ -102,11 +112,35 @@ describe("POST /api/v1/product/create-product", () => {
     });
   });
 
+  // KNOWN-DEFECT-7 виправлено в services/catalog: завелике фото — помилка клієнта, тому 400
+  itGateway("answers 400 for a photo over the size limit", async () => {
+    const res = await create(fields()).attach("photo", OVERSIZED, {
+      filename: "big.png",
+      contentType: "image/png",
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: "photo is required and should be less then 1mb",
+    });
+  });
+
   // KNOWN-DEFECT-7
-  it("answers 500 for a non numeric price", async () => {
+  itDirect("answers 500 for a non numeric price", async () => {
     const res = await create({ ...fields(), price: "free" });
 
     expect(res.status).toBe(500);
+    expect(res.body).toMatchObject({
+      success: false,
+      message: "Error in Crearing Product",
+    });
+  });
+
+  // KNOWN-DEFECT-7 виправлено в services/catalog: некоректна ціна — помилка клієнта, тому 400
+  itGateway("answers 400 for a non numeric price", async () => {
+    const res = await create({ ...fields(), price: "free" });
+
+    expect(res.status).toBe(400);
     expect(res.body).toMatchObject({
       success: false,
       message: "Error in Crearing Product",
@@ -152,7 +186,7 @@ describe("PUT /api/v1/product/update-product/:pid", () => {
   });
 
   // KNOWN-DEFECT-7
-  it.each(missingFields)("answers 500 when %s is missing", async (field, error) => {
+  itDirect.each(missingFields)("answers 500 when %s is missing", async (field, error) => {
     const product = await ctx.createProduct(category);
 
     const res = await update(product._id, without(field));
@@ -161,8 +195,18 @@ describe("PUT /api/v1/product/update-product/:pid", () => {
     expect(res.body).toEqual({ error });
   });
 
+  // KNOWN-DEFECT-7 виправлено в services/catalog: помилка клієнта тепер 400, а не 500
+  itGateway.each(missingFields)("answers 400 when %s is missing", async (field, error) => {
+    const product = await ctx.createProduct(category);
+
+    const res = await update(product._id, without(field));
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error });
+  });
+
   // KNOWN-DEFECT-7
-  it("answers 500 for a photo over the size limit", async () => {
+  itDirect("answers 500 for a photo over the size limit", async () => {
     const product = await ctx.createProduct(category);
 
     const res = await update(product._id, fields()).attach("photo", OVERSIZED, {
@@ -176,10 +220,36 @@ describe("PUT /api/v1/product/update-product/:pid", () => {
     });
   });
 
-  it("answers 500 for an unknown product", async () => {
+  // KNOWN-DEFECT-7 виправлено в services/catalog: завелике фото — помилка клієнта, тому 400
+  itGateway("answers 400 for a photo over the size limit", async () => {
+    const product = await ctx.createProduct(category);
+
+    const res = await update(product._id, fields()).attach("photo", OVERSIZED, {
+      filename: "big.png",
+      contentType: "image/png",
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: "Photo is required and should be less then 1mb",
+    });
+  });
+
+  itDirect("answers 500 for an unknown product", async () => {
     const res = await update(new mongoose.Types.ObjectId(), fields());
 
     expect(res.status).toBe(500);
+    expect(res.body).toMatchObject({
+      success: false,
+      message: "Error in Update product",
+    });
+  });
+
+  // KNOWN-DEFECT-7 виправлено в services/catalog: неіснуючий товар тепер 404, а не 500
+  itGateway("answers 404 for an unknown product", async () => {
+    const res = await update(new mongoose.Types.ObjectId(), fields());
+
+    expect(res.status).toBe(404);
     expect(res.body).toMatchObject({
       success: false,
       message: "Error in Update product",
@@ -271,7 +341,7 @@ describe("GET /api/v1/product/product-photo/:pid", () => {
     expect(res.body.toString()).toBe("stored-image");
   });
 
-  it("never responds for a product without a photo", async () => {
+  itDirect("never responds for a product without a photo", async () => {
     const product = await ctx.createProduct(category);
 
     await expectNoResponse(
@@ -279,7 +349,20 @@ describe("GET /api/v1/product/product-photo/:pid", () => {
     );
   });
 
-  it("answers 500 for an unknown product", async () => {
+  // KNOWN-DEFECT-7 виправлено в services/catalog: фото немає — відповідь 404 замість зависання
+  itGateway("answers 404 for a product without a photo", async () => {
+    const product = await ctx.createProduct(category);
+
+    const res = await ctx.api.get(`/api/v1/product/product-photo/${product._id}`);
+
+    expect(res.status).toBe(404);
+    expect(res.body).toMatchObject({
+      success: false,
+      message: "Error While Getting Photo",
+    });
+  });
+
+  itDirect("answers 500 for an unknown product", async () => {
     const res = await ctx.api.get(
       `/api/v1/product/product-photo/${new mongoose.Types.ObjectId()}`
     );
@@ -290,11 +373,24 @@ describe("GET /api/v1/product/product-photo/:pid", () => {
       message: "Error While Getting Photo",
     });
   });
+
+  // KNOWN-DEFECT-7 виправлено в services/catalog: неіснуючий товар тепер 404, а не 500
+  itGateway("answers 404 for an unknown product", async () => {
+    const res = await ctx.api.get(
+      `/api/v1/product/product-photo/${new mongoose.Types.ObjectId()}`
+    );
+
+    expect(res.status).toBe(404);
+    expect(res.body).toMatchObject({
+      success: false,
+      message: "Error While Getting Photo",
+    });
+  });
 });
 
 describe("DELETE /api/v1/product/delete-product/:pid", () => {
   // KNOWN-DEFECT-1
-  it("deletes a product without any token", async () => {
+  itDirect("deletes a product without any token", async () => {
     const product = await ctx.createProduct(category);
 
     const res = await ctx.api.delete(
@@ -309,8 +405,21 @@ describe("DELETE /api/v1/product/delete-product/:pid", () => {
     expect(await ctx.productModel.findById(product._id)).toBeNull();
   });
 
+  // KNOWN-DEFECT-1 виправлено: шлюз вимагає токен адміністратора, без нього товар лишається
+  itGateway("answers 401 without a token and keeps the product", async () => {
+    const product = await ctx.createProduct(category);
+
+    const res = await ctx.api.delete(
+      `/api/v1/product/delete-product/${product._id}`
+    );
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ success: false, message: "Invalid or missing token" });
+    expect(await ctx.productModel.findById(product._id)).not.toBeNull();
+  });
+
   // KNOWN-DEFECT-1
-  it("deletes a product for a caller who is not an admin", async () => {
+  itDirect("deletes a product for a caller who is not an admin", async () => {
     const product = await ctx.createProduct(category);
     const user = await ctx.createUser();
 
@@ -322,12 +431,38 @@ describe("DELETE /api/v1/product/delete-product/:pid", () => {
     expect(await ctx.productModel.findById(product._id)).toBeNull();
   });
 
+  // KNOWN-DEFECT-1 виправлено: звичайному користувачу видалення заборонено
+  itGateway("answers 401 for a caller who is not an admin and keeps the product", async () => {
+    const product = await ctx.createProduct(category);
+    const user = await ctx.createUser();
+
+    const res = await ctx.api
+      .delete(`/api/v1/product/delete-product/${product._id}`)
+      .set("Authorization", tokenFor(user));
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ success: false, message: "Unauthorized Access" });
+    expect(await ctx.productModel.findById(product._id)).not.toBeNull();
+  });
+
+  // KNOWN-DEFECT-1 виправлено: адміністратор, як і раніше, може видалити товар
+  itGateway("deletes a product for an admin", async () => {
+    const product = await ctx.createProduct(category);
+
+    const res = await ctx.api
+      .delete(`/api/v1/product/delete-product/${product._id}`)
+      .set("Authorization", token);
+
+    expect(res.status).toBe(200);
+    expect(await ctx.productModel.findById(product._id)).toBeNull();
+  });
+
   it("answers 500 when the database fails", async () => {
     failing(ctx.productModel, "findByIdAndDelete");
 
-    const res = await ctx.api.delete(
-      `/api/v1/product/delete-product/${new mongoose.Types.ObjectId()}`
-    );
+    const res = await ctx.api
+      .delete(`/api/v1/product/delete-product/${new mongoose.Types.ObjectId()}`)
+      .set("Authorization", token);
 
     expect(res.status).toBe(500);
     expect(res.body).toMatchObject({
@@ -369,7 +504,7 @@ describe("POST /api/v1/product/product-filters", () => {
   });
 
   // KNOWN-DEFECT-7
-  it("fails with 400 for a request without filters", async () => {
+  itDirect("fails with 400 for a request without filters", async () => {
     const res = await ctx.api.post("/api/v1/product/product-filters").send({});
 
     expect(res.status).toBe(400);
@@ -377,6 +512,50 @@ describe("POST /api/v1/product/product-filters", () => {
       success: false,
       message: "Error while filtering products",
     });
+  });
+
+  // KNOWN-DEFECT-7 виправлено в services/catalog: порожній запит більше не падає, ProductQueryBuilder пропускає відсутні фільтри
+  itGateway("returns everything for a request without filters", async () => {
+    await ctx.createProduct(category);
+
+    const res = await ctx.api.post("/api/v1/product/product-filters").send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.products).toHaveLength(1);
+  });
+});
+
+describe("POST /api/v1/product/clone/:pid", () => {
+  // Новий маршрут services/catalog: лише для адміністратора, копія без фото
+  itGateway("creates a copy with a new id and slug and without the photo", async () => {
+    const product = await ctx.createProduct(category, { photo: PHOTO });
+
+    const res = await ctx.api
+      .post(`/api/v1/product/clone/${product._id}`)
+      .set("Authorization", token)
+      .send({ price: 1 });
+
+    expect(res.status).toBe(201);
+    expect(res.body.products._id).not.toBe(String(product._id));
+    expect(res.body.products.slug).not.toBe(product.slug);
+    expect(res.body.products.price).toBe(1);
+    const copy = await ctx.productModel.findById(res.body.products._id);
+    expect(copy.photo.data).toBeUndefined();
+  });
+
+  // Новий маршрут services/catalog: звичайному користувачу клонування заборонено
+  itGateway("answers 401 for a caller who is not an admin", async () => {
+    const product = await ctx.createProduct(category);
+    const user = await ctx.createUser();
+
+    const res = await ctx.api
+      .post(`/api/v1/product/clone/${product._id}`)
+      .set("Authorization", tokenFor(user))
+      .send({});
+
+    expect(res.status).toBe(401);
+    expect(await ctx.productModel.countDocuments()).toBe(1);
   });
 });
 

@@ -3,6 +3,8 @@ import mongoose from "mongoose";
 import {
   expectNoResponse,
   failing,
+  itDirect,
+  itGateway,
   mountController,
   startApp,
   tokenFor,
@@ -68,13 +70,26 @@ describe("POST /api/v1/category/create-category", () => {
     });
   });
 
-  it("never responds on a database failure because the catch block throws", async () => {
+  itDirect("never responds on a database failure because the catch block throws", async () => {
     failing(ctx.categoryModel, "findOne");
-    const { api, settled } = mountController(createCategoryController);
+    const { api, settled } = await mountController(createCategoryController);
 
     await expectNoResponse(api.post("/").send({ name: "Mice" }));
 
     await expect(settled).resolves.toBeInstanceOf(ReferenceError);
+  });
+
+  // У services/catalog друкарську помилку в catch не перенесено, тому при збої бази є відповідь 500
+  itGateway("answers 500 on a database failure", async () => {
+    failing(ctx.categoryModel, "findOne");
+
+    const res = await ctx.api
+      .post("/api/v1/category/create-category")
+      .set("Authorization", token)
+      .send({ name: "Mice" });
+
+    expect(res.status).toBe(500);
+    expect(res.body).toMatchObject({ success: false, message: "Error In Category" });
   });
 });
 
@@ -105,7 +120,7 @@ describe("PUT /api/v1/category/update-category/:id", () => {
     expect(res.body.category).toBeNull();
   });
 
-  it("answers 500 when the name is missing", async () => {
+  itDirect("answers 500 when the name is missing", async () => {
     const category = await ctx.createCategory();
 
     const res = await ctx.api
@@ -114,6 +129,22 @@ describe("PUT /api/v1/category/update-category/:id", () => {
       .send({});
 
     expect(res.status).toBe(500);
+    expect(res.body).toMatchObject({
+      success: false,
+      message: "Error While Updating Category",
+    });
+  });
+
+  // KNOWN-DEFECT-7 виправлено в services/catalog: помилка клієнта тепер 400, а не 500
+  itGateway("answers 400 when the name is missing", async () => {
+    const category = await ctx.createCategory();
+
+    const res = await ctx.api
+      .put(`/api/v1/category/update-category/${category._id}`)
+      .set("Authorization", token)
+      .send({});
+
+    expect(res.status).toBe(400);
     expect(res.body).toMatchObject({
       success: false,
       message: "Error While Updating Category",
@@ -209,12 +240,25 @@ describe("DELETE /api/v1/category/delete-category/:id", () => {
     expect(await ctx.productModel.findById(product._id)).not.toBeNull();
   });
 
-  it("answers 500 for a malformed id", async () => {
+  itDirect("answers 500 for a malformed id", async () => {
     const res = await ctx.api
       .delete("/api/v1/category/delete-category/not-an-id")
       .set("Authorization", token);
 
     expect(res.status).toBe(500);
+    expect(res.body).toMatchObject({
+      success: false,
+      message: "Error While Deleting Category",
+    });
+  });
+
+  // KNOWN-DEFECT-7 виправлено в services/catalog: некоректний id — помилка клієнта, тому 400
+  itGateway("answers 400 for a malformed id", async () => {
+    const res = await ctx.api
+      .delete("/api/v1/category/delete-category/not-an-id")
+      .set("Authorization", token);
+
+    expect(res.status).toBe(400);
     expect(res.body).toMatchObject({
       success: false,
       message: "Error While Deleting Category",

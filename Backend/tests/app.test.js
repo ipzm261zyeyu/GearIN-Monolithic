@@ -51,21 +51,24 @@ describe("connectDB", () => {
 });
 
 describe("frontend client", () => {
-  // KNOWN-DEFECT-9
-  it("hard-codes the server address in 42 places across 19 files", () => {
+  it("takes the server address from REACT_APP_API_URL in a single module", () => {
     const root = path.resolve(process.cwd(), "../Frontend/src");
-    const counts = fs
+    const sources = fs
       .readdirSync(root, { recursive: true })
       .filter((file) => file.endsWith(".js"))
-      .map(
-        (file) =>
-          fs
-            .readFileSync(path.join(root, file), "utf8")
-            .split("http://localhost:4000").length - 1
-      )
-      .filter((count) => count > 0);
+      .map((file) => ({
+        file: file.split(path.sep).join("/"),
+        text: fs.readFileSync(path.join(root, file), "utf8"),
+      }));
 
-    expect(counts).toHaveLength(19);
-    expect(counts.reduce((sum, count) => sum + count, 0)).toBe(42);
+    expect(sources.filter(({ text }) => text.includes("localhost:4000"))).toEqual([]);
+    expect(
+      sources
+        .filter(({ text }) => text.includes("REACT_APP_API_URL"))
+        .map(({ file }) => file)
+    ).toEqual(["api.js"]);
+    expect(
+      sources.filter(({ text }) => text.includes('from "axios"')).map(({ file }) => file)
+    ).toEqual(["api.js"]);
   });
 });
