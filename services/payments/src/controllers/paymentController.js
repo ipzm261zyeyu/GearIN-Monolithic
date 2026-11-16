@@ -3,10 +3,10 @@ const isValidAmount = (amount) =>
 
 const isValidNonce = (nonce) => typeof nonce === "string" && nonce.length > 0;
 
-export const createPaymentHandlers = (provider) => ({
+export const createPaymentHandlers = (processor) => ({
   clientToken: async (req, res) => {
     try {
-      res.send(await provider.getClientToken());
+      res.send(await processor.getClientToken());
     } catch (error) {
       console.error(error);
       res.status(500).send(error);
@@ -28,7 +28,7 @@ export const createPaymentHandlers = (provider) => ({
       });
     }
     try {
-      const result = await provider.charge({ amount, nonce });
+      const result = await processor.processPayment(amount, nonce);
       res.status(result.success ? 200 : 402).send(result);
     } catch (error) {
       console.error(error);

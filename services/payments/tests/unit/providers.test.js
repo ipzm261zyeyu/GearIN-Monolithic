@@ -6,7 +6,6 @@ import {
   FakeProvider,
 } from "../../src/providers/FakeProvider.js";
 import { PaymentProvider } from "../../src/providers/PaymentProvider.js";
-import { ProviderFactory } from "../../src/providers/ProviderFactory.js";
 
 const CREDENTIALS = { merchantId: "m", publicKey: "pub", privateKey: "priv" };
 
@@ -22,30 +21,6 @@ describe("PaymentProvider", () => {
     expect(Provider.prototype).toBeInstanceOf(PaymentProvider);
     expect(Object.hasOwn(Provider.prototype, "getClientToken")).toBe(true);
     expect(Object.hasOwn(Provider.prototype, "charge")).toBe(true);
-  });
-});
-
-describe("ProviderFactory", () => {
-  it("returns FakeProvider for fake", () => {
-    expect(ProviderFactory.create({ paymentProvider: "fake", braintree: null })).toBeInstanceOf(
-      FakeProvider
-    );
-  });
-
-  it("returns BraintreeProvider for braintree", () => {
-    expect(
-      ProviderFactory.create({ paymentProvider: "braintree", braintree: CREDENTIALS })
-    ).toBeInstanceOf(BraintreeProvider);
-  });
-
-  it("creates a new provider on every call", () => {
-    const config = { paymentProvider: "fake", braintree: null };
-
-    expect(ProviderFactory.create(config)).not.toBe(ProviderFactory.create(config));
-  });
-
-  it.each(["paypal", "constructor", "__proto__", undefined])("rejects provider %s", (paymentProvider) => {
-    expect(() => ProviderFactory.create({ paymentProvider })).toThrow("Unknown payment provider");
   });
 });
 

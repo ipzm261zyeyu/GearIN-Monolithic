@@ -1,19 +1,16 @@
 import { describe, expect, it, jest } from "@jest/globals";
 import request from "supertest";
 import { createApp } from "../src/app.js";
-import {
-  FAKE_CLIENT_TOKEN,
-  FAKE_DECLINED_NONCE,
-  FakeProvider,
-} from "../src/providers/FakeProvider.js";
+import { FakePaymentProcessor } from "../src/processors/FakePaymentProcessor.js";
+import { FAKE_CLIENT_TOKEN, FAKE_DECLINED_NONCE } from "../src/providers/FakeProvider.js";
 
-const api = request(createApp(new FakeProvider()));
+const api = request(createApp(new FakePaymentProcessor()));
 
 const failingApi = (error) =>
   request(
     createApp({
       getClientToken: jest.fn().mockRejectedValue(error),
-      charge: jest.fn().mockRejectedValue(error),
+      processPayment: jest.fn().mockRejectedValue(error),
     })
   );
 
@@ -90,11 +87,13 @@ describe("POST /internal/charge", () => {
   });
 
   it("does not charge an invalid request", async () => {
-    const charge = jest.fn();
+    const processPayment = jest.fn();
 
-    await request(createApp({ charge })).post("/internal/charge").send({ amount: -1, nonce: "n" });
+    await request(createApp({ processPayment }))
+      .post("/internal/charge")
+      .send({ amount: -1, nonce: "n" });
 
-    expect(charge).not.toHaveBeenCalled();
+    expect(processPayment).not.toHaveBeenCalled();
   });
 
   it("answers 502 without leaking provider details", async () => {

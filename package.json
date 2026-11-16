@@ -1,0 +1,16 @@
+{
+  "name": "gearin",
+  "version": "1.0.0",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "migrate": "node scripts/migrate.mjs",
+    "install:all": "yarn install && yarn --cwd services/gateway install && yarn --cwd services/users install && yarn --cwd services/catalog install && yarn --cwd services/payments install && yarn --cwd services/orders install && yarn --cwd legacy/Backend install && yarn --cwd Frontend install",
+    "test": "npm --prefix services/gateway test && npm --prefix services/users test && npm --prefix services/catalog test && npm --prefix services/payments test && npm --prefix services/orders test && npm --prefix legacy/Backend test && npm --prefix legacy/Backend run test:gateway && npm --prefix Frontend test -- --watchAll=false src/Helpers"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.5",
+    "dotenv": "^16.6.1"
+  }
+}

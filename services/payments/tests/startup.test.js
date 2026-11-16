@@ -50,27 +50,29 @@ describe("start without Braintree keys", () => {
   it("does not create a Braintree client when modules are imported", async () => {
     await import("../src/app.js");
     await import("../src/providers/BraintreeProvider.js");
-    await import("../src/providers/ProviderFactory.js");
+    await import("../src/processors/BraintreePaymentProcessor.js");
 
     expect(BraintreeGateway).not.toHaveBeenCalled();
   });
 
   it("does not create a Braintree client for the fake provider", async () => {
-    const { ProviderFactory } = await import("../src/providers/ProviderFactory.js");
+    const { createPaymentProcessor } = await import("../src/app.js");
 
-    ProviderFactory.create({ paymentProvider: "fake", braintree: null });
+    await createPaymentProcessor({ paymentProvider: "fake", braintree: null }).getClientToken();
 
     expect(BraintreeGateway).not.toHaveBeenCalled();
   });
 
   it("creates the client only when the braintree provider is built", async () => {
-    const { ProviderFactory } = await import("../src/providers/ProviderFactory.js");
+    const { createPaymentProcessor } = await import("../src/app.js");
 
-    ProviderFactory.create({
+    const processor = createPaymentProcessor({
       paymentProvider: "braintree",
       braintree: { merchantId: "m", publicKey: "p", privateKey: "k" },
     });
 
+    expect(BraintreeGateway).not.toHaveBeenCalled();
+    processor.createProvider();
     expect(BraintreeGateway).toHaveBeenCalledTimes(1);
   });
 
